@@ -8,12 +8,13 @@ module Lita
 
       on :loaded, :setup_google_analytics
 
-      route(/^unique_views/, :unique_views, command: false, help: { "unique_views" => "Returns unique views for last 24 hours."})
+      route(/^unique_views\s([0-9]{4}-[0-9]{2}-[0-9]{2}){1}\s([0-9]{4}-[0-9]{2}-[0-9]{2}){1}\s?(week|month|year)?/, :unique_views, command: false, help: { "unique_views" => "Returns unique views for last 24 hours."})
 
       route(/^top_referrers\s?(\d{1,3})?/, :top_referrers, command: false, help: { "top_referrers" => "Returns the top referrers for the last 24 hours."})
       
       def unique_views(response)
-        response.reply "There were #{get_unique_views} unique views in the last 24 hours."
+        @unique_views = get_unique_views(start_date: response.match_data[1], end_date: response.match_data[2], comparison: response.match_data[3])
+        response.reply "#{@unique_views}"
       end
 
       def top_referrers(response)
@@ -23,10 +24,33 @@ module Lita
 
       private
 
-      def get_unique_views
+      def get_unique_views(start_date: ,end_date: ,comparison: nil)
+        cleaned_start_date = Date.parse start_date
+        cleaned_end_date = Date.parse end_date
+        full_response = []
+        #get views between start data and end date
+        full_response << query_views(start_date: cleaned_start_date.to_s, end_date: cleaned_end_date.to_s)
+        unless comparison.nil?  
+          case comparison 
+          when "week"
+            full_response << query_views(start_date: (cleaned_start_date - 7).to_s, end_date: (cleaned_end_date - 7).to_s)
+          when "month"
+            full_response << query_views(start_date: (cleaned_start_date.prev_month).to_s, end_date: (cleaned_end_date.prev_month).to_s)
+          when "year"
+            full_response << query_views(start_date: (cleaned_start_date.prev_year).to_s, end_date: (cleaned_end_date.prev_year).to_s)
+          else
+            return "Your input for the comparison was invalid. Please use 'week', 'month', or 'year'."
+          end
+        end
+        full_response
+      end
+
+      def query_views(start_date: ,end_date: )
+        views = {period: nil , views: nil}
+
         @google_analytics_api = discovered_api
         result = api_client.execute( :api_method => @google_analytics_api.data.ga.get,
-        parameters: { 'ids' => 'ga:66662181', 'start-date' => 'yesterday', 'end-date' => 'today', 'metrics' => 'ga:users' })
+        parameters: { 'ids' => 'ga:66662181', 'start-date' => start_date, 'end-date' => end_date, 'metrics' => 'ga:users' })
         result.data.totalsForAllResults["ga:users"]
       end
 
